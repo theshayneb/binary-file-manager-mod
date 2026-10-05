@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Watch folders: watch several folders for new binary files, each with its own extensions, note folder and template.
+- Renamed to Binary File Manager Mod with its own plugin id (`binary-file-manager-mod`), file list and CSS classes, so it can run side by side with the original plugin.
+- Files that are not in a watch folder are ignored unless "Handle files outside watch folders" is on.
+- Note folders are created when missing; template paths work with or without `.md`.
+- Auto detection starts after the vault has loaded, so existing files are not picked up as new on startup.
+
 ## [0.3.3](https://github.com/qawatake/obsidian-binary-file-manager-plugin/compare/0.3.2...0.3.3) - 2026-08-23
 
 ### Changes

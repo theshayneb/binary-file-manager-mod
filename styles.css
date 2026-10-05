@@ -1,3 +1,10 @@
-.binary-file-manager-text-error {
+.binary-file-manager-mod-text-error {
 	color: var(--text-error);
+}
+
+.binary-file-manager-mod-watch-folder {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: 0 var(--size-4-3);
+	margin-bottom: var(--size-4-3);
 }

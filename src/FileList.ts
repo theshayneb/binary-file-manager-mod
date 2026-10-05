@@ -1,16 +1,17 @@
 import type BinaryFileManagerPlugin from 'main';
 import { type App, normalizePath } from 'obsidian';
 
-const PLUGIN_NAME = 'obsidian-binary-file-manager-plugin';
 const REGISTERED_BINARY_FILE_STORAGE_FILE_NAME =
 	'.binary-file-manager_binary-file-list.txt';
 
 export class FileListAdapter {
 	private app: App;
+	private plugin: BinaryFileManagerPlugin;
 	private registeredBinaryFilePaths: Set<string>;
 
-	constructor(app: App, _plugin: BinaryFileManagerPlugin) {
+	constructor(app: App, plugin: BinaryFileManagerPlugin) {
 		this.app = app;
+		this.plugin = plugin;
 		this.registeredBinaryFilePaths = new Set<string>();
 		this.app.workspace.onLayoutReady(async () => {
 			this.deleteNonExistingBinaryFiles();
@@ -43,10 +44,7 @@ export class FileListAdapter {
 	}
 
 	private async loadBinaryFiles() {
-		const configDir = this.app.vault.configDir;
-		const storageFilePath = normalizePath(
-			`${configDir}/plugins/${PLUGIN_NAME}/${REGISTERED_BINARY_FILE_STORAGE_FILE_NAME}`
-		);
+		const storageFilePath = this.storageFilePath();
 
 		if (!(await this.app.vault.adapter.exists(storageFilePath))) {
 			this.registeredBinaryFilePaths = new Set<string>();
@@ -60,14 +58,21 @@ export class FileListAdapter {
 	}
 
 	private async saveBinaryFiles() {
-		const configDir = this.app.vault.configDir;
-		const storageFilePath = normalizePath(
-			`${configDir}/plugins/${PLUGIN_NAME}/${REGISTERED_BINARY_FILE_STORAGE_FILE_NAME}`
-		);
+		const storageFilePath = this.storageFilePath();
 
 		await this.app.vault.adapter.write(
 			storageFilePath,
 			Array.from(this.registeredBinaryFilePaths).join('\n')
+		);
+	}
+
+	// Stored in this plugin's own folder, so it is never shared with the original plugin.
+	private storageFilePath(): string {
+		const pluginDir =
+			this.plugin.manifest.dir ??
+			`${this.app.vault.configDir}/plugins/${this.plugin.manifest.id}`;
+		return normalizePath(
+			`${pluginDir}/${REGISTERED_BINARY_FILE_STORAGE_FILE_NAME}`
 		);
 	}
 

@@ -1,5 +1,6 @@
 import type { UncoveredApp } from 'Uncover';
 import { retry } from 'Util';
+import { type MetaDataTarget, resolveWatchFolder } from 'WatchFolder';
 import type BinaryFileManagerPlugin from 'main';
 import {
 	type App,
@@ -30,14 +31,40 @@ export class MetaDataGenerator {
 		this.plugin = plugin;
 	}
 
+	// Decides where (and with which template) the metadata note of a binary file goes,
+	// or returns undefined if the file is not watched.
+	resolveTarget(file: TFile): MetaDataTarget | undefined {
+		const { settings } = this.plugin;
+		const target = resolveWatchFolder(
+			file,
+			settings.watchFolders,
+			settings.extensions
+		);
+		if (target) {
+			return target;
+		}
+		if (!settings.handleFilesOutsideWatchFolders) {
+			return undefined;
+		}
+		const extension = this.plugin.fileExtensionManager.getExtensionMatchedBest(
+			file.name
+		);
+		if (extension === undefined) {
+			return undefined;
+		}
+		return {
+			outputFolder: settings.folder,
+			templatePath: settings.templatePath,
+			extension,
+		};
+	}
+
 	async shouldCreateMetaDataFile(file: TAbstractFile): Promise<boolean> {
 		if (!(file instanceof TFile)) {
 			return false;
 		}
 
-		const matchedExtension =
-			this.plugin.fileExtensionManager.getExtensionMatchedBest(file.name);
-		if (!matchedExtension) {
+		if (this.resolveTarget(file) === undefined) {
 			return false;
 		}
 
@@ -49,53 +76,87 @@ export class MetaDataGenerator {
 	}
 
 	async create(file: TFile) {
-		const metaDataFileName = this.uniquefyMetaDataFileName(
-			this.generateMetaDataFileName(file)
+		const target = this.resolveTarget(file);
+		if (!target) {
+			return;
+		}
+		await this.ensureFolder(target.outputFolder);
+		const metaDataFilePath = this.uniquefyMetaDataFilePath(
+			target.outputFolder,
+			this.generateMetaDataFileName(file, target)
 		);
-		const metaDataFilePath = `${this.plugin.settings.folder}/${metaDataFileName}`;
 
-		await this.createMetaDataFile(metaDataFilePath, file as TFile);
+		await this.createMetaDataFile(metaDataFilePath, file, target);
 	}
 
-	private generateMetaDataFileName(file: TFile): string {
+	private generateMetaDataFileName(
+		file: TFile,
+		target: MetaDataTarget
+	): string {
 		const metaDataFileName = `${this.plugin.formatter.format(
 			this.plugin.settings.filenameFormat,
 			file.path,
-			file.stat.ctime
+			file.stat.ctime,
+			target.extension
 		)}.md`;
 		return metaDataFileName;
 	}
 
-	private uniquefyMetaDataFileName(metaDataFileName: string): string {
-		const metaDataFilePath = normalizePath(
-			`${this.plugin.settings.folder}/${metaDataFileName}`
-		);
+	private uniquefyMetaDataFilePath(
+		folder: string,
+		metaDataFileName: string
+	): string {
+		const metaDataFilePath = normalizePath(`${folder}/${metaDataFileName}`);
 		if (this.app.vault.getAbstractFileByPath(metaDataFilePath)) {
-			return `CONFLICT-${moment().format(
-				'YYYY-MM-DD-hh-mm-ss'
-			)}-${metaDataFileName}`;
+			return normalizePath(
+				`${folder}/CONFLICT-${moment().format(
+					'YYYY-MM-DD-hh-mm-ss'
+				)}-${metaDataFileName}`
+			);
 		} else {
-			return metaDataFileName;
+			return metaDataFilePath;
+		}
+	}
+
+	private async ensureFolder(folder: string): Promise<void> {
+		const folderPath = normalizePath(folder);
+		if (
+			folderPath === '/' ||
+			this.app.vault.getAbstractFileByPath(folderPath)
+		) {
+			return;
+		}
+		try {
+			await this.app.vault.createFolder(folderPath);
+		} catch (err) {
+			// another metadata file may have created it in the meantime
+			if (!this.app.vault.getAbstractFileByPath(folderPath)) {
+				throw err;
+			}
 		}
 	}
 
 	private async createMetaDataFile(
 		metaDataFilePath: string,
-		binaryFile: TFile
+		binaryFile: TFile,
+		target: MetaDataTarget
 	): Promise<void> {
-		const templateContent = await this.fetchTemplateContent();
+		const templateContent = await this.fetchTemplateContent(
+			target.templatePath
+		);
+		const formattedContent = this.plugin.formatter.format(
+			templateContent,
+			binaryFile.path,
+			binaryFile.stat.ctime,
+			target.extension
+		);
 
 		// process by Templater
-		const templaterPlugin = await this.getTemplaterPlugin();
-		if (!(this.plugin.settings.useTemplater && templaterPlugin)) {
-			this.app.vault.create(
-				metaDataFilePath,
-				this.plugin.formatter.format(
-					templateContent,
-					binaryFile.path,
-					binaryFile.stat.ctime
-				)
-			);
+		const templaterPlugin = this.plugin.settings.useTemplater
+			? await this.getTemplaterPlugin()
+			: undefined;
+		if (!templaterPlugin) {
+			await this.app.vault.create(metaDataFilePath, formattedContent);
 		} else {
 			const targetFile = await this.app.vault.create(metaDataFilePath, '');
 
@@ -103,40 +164,44 @@ export class MetaDataGenerator {
 				// @ts-expect-error
 				const content = await templaterPlugin.templater.parse_template(
 					{ target_file: targetFile, run_mode: 4 },
-					this.plugin.formatter.format(
-						templateContent,
-						binaryFile.path,
-						binaryFile.stat.ctime
-					)
+					formattedContent
 				);
-				this.app.vault.modify(targetFile, content);
+				await this.app.vault.modify(targetFile, content);
 			} catch (err) {
 				new Notice(
-					'ERROR in Binary File Manager Plugin: failed to connect to Templater. Your Templater version may not be supported'
+					'ERROR in Binary File Manager Mod: failed to connect to Templater. Your Templater version may not be supported'
 				);
 				console.log(err);
 			}
 		}
 	}
 
-	private async fetchTemplateContent(): Promise<string> {
-		if (this.plugin.settings.templatePath === '') {
+	private async fetchTemplateContent(templatePath: string): Promise<string> {
+		if (templatePath === '') {
 			return DEFAULT_TEMPLATE_CONTENT;
 		}
 
+		// accept template paths written with or without ".md"
+		const candidatePaths = [normalizePath(templatePath)];
+		if (!templatePath.endsWith('.md')) {
+			candidatePaths.push(normalizePath(`${templatePath}.md`));
+		}
 		const templateFile = await retry(
 			() => {
-				return this.app.vault.getAbstractFileByPath(
-					this.plugin.settings.templatePath
-				);
+				for (const path of candidatePaths) {
+					const file = this.app.vault.getAbstractFileByPath(path);
+					if (file instanceof TFile) {
+						return file;
+					}
+				}
+				return undefined;
 			},
 			TIMEOUT_MILLISECOND,
-			RETRY_NUMBER,
-			(abstractFile) => abstractFile !== null
+			RETRY_NUMBER
 		);
 
-		if (!(templateFile instanceof TFile)) {
-			const msg = `Template file ${this.plugin.settings.templatePath} is invalid`;
+		if (!templateFile) {
+			const msg = `Template file ${templatePath} is invalid`;
 			console.log(msg);
 			new Notice(msg);
 			return DEFAULT_TEMPLATE_CONTENT;
@@ -169,8 +234,7 @@ export class MetaDataGenerator {
 		// collect only unlinked binaries
 		this.app.vault.getFiles().forEach((file) => {
 			const isUnlinkedBinary =
-				!linkedPaths.has(file.path) &&
-				this.plugin.fileExtensionManager.verify(file.path);
+				!linkedPaths.has(file.path) && this.resolveTarget(file) !== undefined;
 			if (isUnlinkedBinary) {
 				unlinkedBinaries.push(file);
 			}

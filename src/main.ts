@@ -3,15 +3,20 @@ import { FileListAdapter } from 'FileList';
 import { Formatter } from 'Formatter';
 import { MetaDataGenerator } from 'Generator';
 import { BinaryFileManagerSettingTab } from 'Setting';
+import { sanitizeWatchFolder, type WatchFolder } from 'WatchFolder';
 import { Notice, Plugin, type TAbstractFile, type TFile } from 'obsidian';
 
-interface BinaryFileManagerSettings {
+export interface BinaryFileManagerSettings {
 	autoDetection: boolean;
 	extensions: string[];
 	folder: string;
 	filenameFormat: string;
 	templatePath: string;
 	useTemplater: boolean;
+	watchFolders: WatchFolder[];
+	// Also create metadata for binary files that no watch folder handles,
+	// using `folder` and `templatePath` (the original plugin's behavior).
+	handleFilesOutsideWatchFolders: boolean;
 }
 
 const DEFAULT_SETTINGS: BinaryFileManagerSettings = {
@@ -39,6 +44,8 @@ const DEFAULT_SETTINGS: BinaryFileManagerSettings = {
 	filenameFormat: 'INFO_{{NAME}}_{{EXTENSION:UP}}',
 	templatePath: '',
 	useTemplater: false,
+	watchFolders: [],
+	handleFilesOutsideWatchFolders: false,
 };
 
 export default class BinaryFileManagerPlugin extends Plugin {
@@ -56,21 +63,25 @@ export default class BinaryFileManagerPlugin extends Plugin {
 		this.fileListAdapter = await new FileListAdapter(this.app, this).load();
 		this.metaDataGenerator = new MetaDataGenerator(this.app, this);
 
-		this.registerEvent(
-			this.app.vault.on('create', async (file: TAbstractFile) => {
-				if (!this.settings.autoDetection) {
-					return;
-				}
-				if (!(await this.metaDataGenerator.shouldCreateMetaDataFile(file))) {
-					return;
-				}
+		// Registered once the layout is ready: before that, Obsidian fires 'create'
+		// for every existing file while it loads the vault.
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(
+				this.app.vault.on('create', async (file: TAbstractFile) => {
+					if (!this.settings.autoDetection) {
+						return;
+					}
+					if (!(await this.metaDataGenerator.shouldCreateMetaDataFile(file))) {
+						return;
+					}
 
-				await this.metaDataGenerator.create(file as TFile);
-				new Notice(`Metadata file of ${file.name} is created.`);
-				this.fileListAdapter.add(file.path);
-				await this.fileListAdapter.save();
-			})
-		);
+					await this.metaDataGenerator.create(file as TFile);
+					new Notice(`Metadata file of ${file.name} is created.`);
+					this.fileListAdapter.add(file.path);
+					await this.fileListAdapter.save();
+				})
+			);
+		});
 
 		this.registerEvent(
 			this.app.vault.on('delete', async (file: TAbstractFile) => {
@@ -132,7 +143,14 @@ export default class BinaryFileManagerPlugin extends Plugin {
 	// onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		// deep copy so that editing the settings never mutates DEFAULT_SETTINGS
+		const defaults: BinaryFileManagerSettings = JSON.parse(
+			JSON.stringify(DEFAULT_SETTINGS)
+		);
+		this.settings = Object.assign(defaults, await this.loadData());
+		this.settings.watchFolders = Array.isArray(this.settings.watchFolders)
+			? this.settings.watchFolders.map(sanitizeWatchFolder)
+			: [];
 	}
 
 	async saveSettings() {

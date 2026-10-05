@@ -1,4 +1,5 @@
 import { validFileName } from 'Util';
+import { newWatchFolder, parseExtensions } from 'WatchFolder';
 import type BinaryFileManagerPlugin from 'main';
 import {
 	type App,
@@ -33,6 +34,24 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.autoDetection)
 					.onChange(async (value: boolean) => {
 						this.plugin.settings.autoDetection = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		this.displayWatchFolders(containerEl);
+
+		new Setting(containerEl).setName('Defaults').setHeading();
+
+		new Setting(containerEl)
+			.setName('Handle files outside watch folders')
+			.setDesc(
+				'Also create metadata for binary files that no watch folder handles, using the new file location and template below.'
+			)
+			.addToggle((component) => {
+				component
+					.setValue(this.plugin.settings.handleFilesOutsideWatchFolders)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.handleFilesOutsideWatchFolders = value;
 						await this.plugin.saveSettings();
 					});
 			});
@@ -116,6 +135,9 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 		let extensionToBeAdded: string;
 		new Setting(containerEl)
 			.setName('Extension to be watched')
+			.setDesc(
+				'Used outside watch folders, and by watch folders whose extension list is empty.'
+			)
 			.addText((text) =>
 				text.setPlaceholder('Example: pdf').onChange((value) => {
 					extensionToBeAdded = value.trim().replace(/^\./, '');
@@ -153,7 +175,7 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Forget all binary files')
 			.setDesc(
-				'Binary File Manager remembers binary files for which it has created metadata. If it forgets, then it recognizes all binary files as newly created files and tries to create their metadata again.'
+				'Binary File Manager Mod remembers binary files for which it has created metadata. If it forgets, then it recognizes all binary files as newly created files and tries to create their metadata again.'
 			)
 			.addButton((component) => {
 				component
@@ -163,6 +185,102 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 						new ForgetAllModal(this.app, this.plugin).open();
 					});
 			});
+	}
+
+	private displayWatchFolders(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('Watch folders')
+			.setDesc(
+				"New binary files in a watched folder (or its subfolders) get a metadata note in that entry's note folder, made from its template. When watched folders overlap, the deepest one wins."
+			)
+			.setHeading();
+
+		this.plugin.settings.watchFolders.forEach((watchFolder, index) => {
+			const groupEl = containerEl.createDiv({
+				cls: 'binary-file-manager-mod-watch-folder',
+			});
+
+			new Setting(groupEl)
+				.setName('Watched folder')
+				.setDesc('New binary files added here are detected.')
+				.addSearch((component) => {
+					new FolderSuggest(this.app, component.inputEl);
+					component
+						.setPlaceholder('Example: Media/Books/Attachments')
+						.setValue(watchFolder.inputFolder)
+						.onChange(async (value) => {
+							watchFolder.inputFolder = value.trim();
+							await this.plugin.saveSettings();
+						});
+				});
+
+			new Setting(groupEl)
+				.setName('Extensions')
+				.setDesc(
+					'Comma-separated. Leave empty to use the default extension list.'
+				)
+				.addText((component) => {
+					component
+						.setPlaceholder('Example: epub, pdf')
+						.setValue(watchFolder.extensions.join(', '))
+						.onChange(async (value) => {
+							watchFolder.extensions = parseExtensions(value);
+							await this.plugin.saveSettings();
+						});
+				});
+
+			new Setting(groupEl)
+				.setName('Note folder')
+				.setDesc(
+					'Metadata notes are created here. Leave empty for the vault root.'
+				)
+				.addSearch((component) => {
+					new FolderSuggest(this.app, component.inputEl);
+					component
+						.setPlaceholder('Example: Media/Books')
+						.setValue(watchFolder.outputFolder)
+						.onChange(async (value) => {
+							watchFolder.outputFolder = value.trim();
+							await this.plugin.saveSettings();
+						});
+				});
+
+			new Setting(groupEl)
+				.setName('Template')
+				.setDesc('Leave empty to use the default template.')
+				.addSearch((component) => {
+					new FileSuggest(this.app, component.inputEl);
+					component
+						.setPlaceholder('Example: Templates/NewBook')
+						.setValue(watchFolder.templatePath)
+						.onChange(async (value) => {
+							watchFolder.templatePath = value.trim();
+							await this.plugin.saveSettings();
+						});
+				});
+
+			new Setting(groupEl).addButton((component) => {
+				component
+					.setButtonText('Remove watch folder')
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.watchFolders.splice(index, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			});
+		});
+
+		new Setting(containerEl).addButton((component) => {
+			component
+				.setButtonText('Add watch folder')
+				.setCta()
+				.onClick(async () => {
+					this.plugin.settings.watchFolders.push(newWatchFolder());
+					await this.plugin.saveSettings();
+					this.display();
+				});
+		});
 	}
 
 	displaySampleFileNameDesc(descEl: HTMLElement, sampleFileName: string): void {
@@ -185,7 +303,7 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 					fragment.createEl('br');
 					const msgEl = fragment.createEl('span');
 					msgEl.appendText(`${included} must not be included`);
-					msgEl.addClass('binary-file-manager-text-error');
+					msgEl.addClass('binary-file-manager-mod-text-error');
 				}
 			})
 		);
@@ -218,7 +336,7 @@ class ForgetAllModal extends Modal {
 			.onClick(async () => {
 				this.plugin.fileListAdapter.deleteAll();
 				await this.plugin.fileListAdapter.save();
-				new Notice('Binary File Manager forgets all!');
+				new Notice('Binary File Manager Mod forgets all!');
 				this.close();
 			});
 

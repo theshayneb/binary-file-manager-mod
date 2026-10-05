@@ -1,4 +1,27 @@
-## Binary File Manager Plugin
+## Binary File Manager Mod
+
+A fork of [Binary File Manager](https://github.com/qawatake/obsidian-binary-file-manager-plugin) that adds **watch folders**.
+It uses its own plugin id (`binary-file-manager-mod`), settings and file list, so it can be installed side by side with the original plugin.
+
+### Watch folders
+In the settings tab, add one entry per folder you want watched. Each entry has:
+
+| Setting | Description |
+| -- | -- |
+| Watched folder | New binary files added to this folder (or its subfolders) are detected. Use `/` for the whole vault. |
+| Extensions | Comma-separated, like `epub, pdf`. Leave empty to use the default extension list. |
+| Note folder | The metadata note is created here (the folder is created if needed). |
+| Template | Template for the metadata note. Leave empty to use the default template. |
+
+For example:
+- `Media/Books/Attachments`, extensions `epub`, note folder `Media/Books`, template `Templates/NewBook.md`
+- `Music/Attachments`, extensions `mp3`, note folder `Media/Music`, template `Templates/NewSong.md`
+
+When watched folders overlap, the deepest one whose extensions match wins.
+Binary files outside every watch folder are ignored unless **Handle files outside watch folders** is on; they then use the default new file location and template, as in the original plugin.
+
+---
+
 
 This plugin detects new binary files in the vault and create markdown files with metadata.
 
