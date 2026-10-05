@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.1] - 2026-10-05
+
+- Removed the "Enable auto detection" setting. New files are now detected in every watch folder whose own toggle is on, so the per-folder toggles are the only on/off switches.
+
 ## [0.4.0] - 2026-10-05
 
 - Watch folders: watch several folders for new binary files, each with its own extensions, note folder and template, and an on/off toggle.

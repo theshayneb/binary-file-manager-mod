@@ -8,7 +8,7 @@ In the settings tab, add one entry per folder you want watched. Each entry has:
 
 | Setting | Description |
 | -- | -- |
-| Enabled | Turn a watch folder off without removing it. |
+| Enabled | Turn a watch folder off without removing it. There is no global on/off switch; new files are detected in every enabled watch folder. |
 | Watched folder | New binary files added to this folder (or its subfolders) are detected. Use `/` for the whole vault. |
 | Extensions | Comma-separated, like `epub, pdf`. Leave empty to use the default extension list. |
 | Note folder | The metadata note is created here (the folder is created if needed). |
@@ -38,10 +38,10 @@ For example, if you add tags to the metadata of an image file, then you can indi
 
 ### Quick start
 1. Install and enable this plugin.
-2. Go to the setting tab of Binary File Manager and enable auto detection.
-3. Add a static file like `sample.pdf` to your vault.
+2. In its settings tab, add a watch folder (for example `/` with extension `pdf`).
+3. Add a static file like `sample.pdf` to that folder.
 
-Then you will find a meta data file `INFO_sample_PDF.md` in the root directory.
+Then you will find a meta data file `INFO_sample_PDF.md` in the watch folder's note folder.
 You can customize the new file location and the templates for names and contents of metadata files.
 
 ### Format syntax

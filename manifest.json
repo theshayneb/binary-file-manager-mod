@@ -1,7 +1,7 @@
 {
 	"id": "binary-file-manager-mod",
 	"name": "Binary File Manager Mod",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"minAppVersion": "1.4.10",
 	"description": "Detects new binary files in watched folders and creates markdown files with metadata from per-folder templates.",
 	"author": "qawatake",
