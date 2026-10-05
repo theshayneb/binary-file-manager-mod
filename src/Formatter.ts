@@ -19,26 +19,22 @@ export class Formatter {
 		this.plugin = plugin;
 	}
 
-	// `extension` overrides the extension detected from the default extension list.
+	// `extension` is the file's extension as matched by its watch folder, like 'png'.
 	format(
 		input: string,
 		filepath: string,
 		createdAt: number,
-		extension?: string
+		extension: string
 	): string {
 		let output = input;
 		output = this.replaceDate(output, createdAt);
 		output = this.replaceNow(output);
 		const fullname = basename(filepath);
-		const matchedExtension =
-			extension ??
-			this.plugin.fileExtensionManager.getExtensionMatchedBest(fullname) ??
-			'';
-		const nameWithoutExtension = basename(fullname, matchedExtension); // add "." to get like ".png"
+		const nameWithoutExtension = basename(fullname, extension); // add "." to get like ".png"
 		output = this.replacePath(output, filepath);
 		output = this.replaceFullName(output, fullname);
 		output = this.replaceName(output, nameWithoutExtension);
-		output = this.replaceExtension(output, matchedExtension);
+		output = this.replaceExtension(output, extension);
 		output = this.replaceLink(output, filepath);
 		output = this.replaceEmbed(output, filepath);
 		return output;

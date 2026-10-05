@@ -1,63 +1,28 @@
-import { FileExtensionManager } from 'Extension';
 import { FileListAdapter } from 'FileList';
 import { Formatter } from 'Formatter';
 import { MetaDataGenerator } from 'Generator';
 import { BinaryFileManagerSettingTab } from 'Setting';
-import { sanitizeWatchFolder, type WatchFolder } from 'WatchFolder';
+import {
+	DEFAULT_FILENAME_FORMAT,
+	sanitizeWatchFolder,
+	type WatchFolder,
+} from 'WatchFolder';
 import { Notice, Plugin, type TAbstractFile, type TFile } from 'obsidian';
 
 export interface BinaryFileManagerSettings {
-	extensions: string[];
-	folder: string;
-	filenameFormat: string;
-	templatePath: string;
-	useTemplater: boolean;
 	watchFolders: WatchFolder[];
-	// Also create metadata for binary files that no watch folder handles,
-	// using `folder` and `templatePath` (the original plugin's behavior).
-	handleFilesOutsideWatchFolders: boolean;
 }
-
-const DEFAULT_SETTINGS: BinaryFileManagerSettings = {
-	extensions: [
-		'png',
-		'jpg',
-		'jpeg',
-		'gif',
-		'bmp',
-		'svg',
-		'mp3',
-		'webm',
-		'wav',
-		'm4a',
-		'ogg',
-		'3gp',
-		'flac',
-		'mp4',
-		'webm',
-		'ogv',
-		'pdf',
-	],
-	folder: '/',
-	filenameFormat: 'INFO_{{NAME}}_{{EXTENSION:UP}}',
-	templatePath: '',
-	useTemplater: false,
-	watchFolders: [],
-	handleFilesOutsideWatchFolders: false,
-};
 
 export default class BinaryFileManagerPlugin extends Plugin {
 	override settings!: BinaryFileManagerSettings;
 	formatter!: Formatter;
 	metaDataGenerator!: MetaDataGenerator;
-	fileExtensionManager!: FileExtensionManager;
 	fileListAdapter!: FileListAdapter;
 
 	override async onload() {
 		await this.loadSettings();
 
 		this.formatter = new Formatter(this.app, this);
-		this.fileExtensionManager = new FileExtensionManager(this);
 		this.fileListAdapter = await new FileListAdapter(this.app, this).load();
 		this.metaDataGenerator = new MetaDataGenerator(this.app, this);
 
@@ -70,10 +35,17 @@ export default class BinaryFileManagerPlugin extends Plugin {
 						return;
 					}
 
-					await this.metaDataGenerator.create(file as TFile);
+					const created = await this.metaDataGenerator.create(file as TFile);
+					if (!created) {
+						return;
+					}
 					new Notice(`Metadata file of ${file.name} is created.`);
 					this.fileListAdapter.add(file.path);
 					await this.fileListAdapter.save();
+					// only here, not in the commands, which may create many notes at once
+					if (created.target.openNote) {
+						await this.app.workspace.getLeaf('tab').openFile(created.note);
+					}
 				})
 			);
 		});
@@ -138,16 +110,24 @@ export default class BinaryFileManagerPlugin extends Plugin {
 	// onunload() {}
 
 	async loadSettings() {
-		// deep copy so that editing the settings never mutates DEFAULT_SETTINGS
-		const defaults: BinaryFileManagerSettings = JSON.parse(
-			JSON.stringify(DEFAULT_SETTINGS)
-		);
-		this.settings = Object.assign(defaults, await this.loadData());
-		// removed setting: each watch folder has its own on/off toggle now
-		delete (this.settings as any).autoDetection;
-		this.settings.watchFolders = Array.isArray(this.settings.watchFolders)
-			? this.settings.watchFolders.map(sanitizeWatchFolder)
+		const data = (await this.loadData()) ?? {};
+		// 0.4.x kept the file name format and the Templater switch as global settings;
+		// they now belong to each watch folder. Other global settings are dropped.
+		const fallback = {
+			filenameFormat:
+				typeof data.filenameFormat === 'string' && data.filenameFormat.trim()
+					? data.filenameFormat
+					: DEFAULT_FILENAME_FORMAT,
+			useTemplater: data.useTemplater === true,
+		};
+		const watchFolders: unknown[] = Array.isArray(data.watchFolders)
+			? data.watchFolders
 			: [];
+		this.settings = {
+			watchFolders: watchFolders.map((raw) =>
+				sanitizeWatchFolder(raw, fallback)
+			),
+		};
 	}
 
 	async saveSettings() {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0] - 2026-10-05
+
+- Removed the "Defaults" settings: the settings tab now only has watch folders. The file name format and "Use Templater" moved into each watch folder (existing watch folders keep the values they had).
+- A watch folder with an empty extension list now watches every file type except notes, instead of the old default extension list.
+- New per-folder toggle "Open note after creating it" opens the new metadata note in a new tab.
+- Removed the "Forget all binary files" button.
+
 ## [0.4.1] - 2026-10-05
 
 - Removed the "Enable auto detection" setting. New files are now detected in every watch folder whose own toggle is on, so the per-folder toggles are the only on/off switches.

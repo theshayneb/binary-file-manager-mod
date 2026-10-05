@@ -1,10 +1,6 @@
 import type { UncoveredApp } from 'Uncover';
 import { retry } from 'Util';
-import {
-	isInWatchFolder,
-	type MetaDataTarget,
-	resolveWatchFolder,
-} from 'WatchFolder';
+import { type MetaDataTarget, resolveWatchFolder } from 'WatchFolder';
 import type BinaryFileManagerPlugin from 'main';
 import {
 	type App,
@@ -36,35 +32,9 @@ export class MetaDataGenerator {
 	}
 
 	// Decides where (and with which template) the metadata note of a binary file goes,
-	// or returns undefined if the file is not watched.
+	// or returns undefined if no enabled watch folder handles the file.
 	resolveTarget(file: TFile): MetaDataTarget | undefined {
-		const { settings } = this.plugin;
-		const target = resolveWatchFolder(
-			file,
-			settings.watchFolders,
-			settings.extensions
-		);
-		if (target) {
-			return target;
-		}
-		// Files in a disabled watch folder are left alone, not handled as outside files.
-		if (
-			!settings.handleFilesOutsideWatchFolders ||
-			isInWatchFolder(file, settings.watchFolders)
-		) {
-			return undefined;
-		}
-		const extension = this.plugin.fileExtensionManager.getExtensionMatchedBest(
-			file.name
-		);
-		if (extension === undefined) {
-			return undefined;
-		}
-		return {
-			outputFolder: settings.folder,
-			templatePath: settings.templatePath,
-			extension,
-		};
+		return resolveWatchFolder(file, this.plugin.settings.watchFolders);
 	}
 
 	async shouldCreateMetaDataFile(file: TAbstractFile): Promise<boolean> {
@@ -83,10 +53,13 @@ export class MetaDataGenerator {
 		return true;
 	}
 
-	async create(file: TFile) {
+	// Creates the metadata note and returns it with the watch folder settings used.
+	async create(
+		file: TFile
+	): Promise<{ note: TFile; target: MetaDataTarget } | undefined> {
 		const target = this.resolveTarget(file);
 		if (!target) {
-			return;
+			return undefined;
 		}
 		await this.ensureFolder(target.outputFolder);
 		const metaDataFilePath = this.uniquefyMetaDataFilePath(
@@ -94,7 +67,8 @@ export class MetaDataGenerator {
 			this.generateMetaDataFileName(file, target)
 		);
 
-		await this.createMetaDataFile(metaDataFilePath, file, target);
+		const note = await this.createMetaDataFile(metaDataFilePath, file, target);
+		return { note, target };
 	}
 
 	private generateMetaDataFileName(
@@ -102,7 +76,7 @@ export class MetaDataGenerator {
 		target: MetaDataTarget
 	): string {
 		const metaDataFileName = `${this.plugin.formatter.format(
-			this.plugin.settings.filenameFormat,
+			target.filenameFormat,
 			file.path,
 			file.stat.ctime,
 			target.extension
@@ -148,7 +122,7 @@ export class MetaDataGenerator {
 		metaDataFilePath: string,
 		binaryFile: TFile,
 		target: MetaDataTarget
-	): Promise<void> {
+	): Promise<TFile> {
 		const templateContent = await this.fetchTemplateContent(
 			target.templatePath
 		);
@@ -160,28 +134,28 @@ export class MetaDataGenerator {
 		);
 
 		// process by Templater
-		const templaterPlugin = this.plugin.settings.useTemplater
+		const templaterPlugin = target.useTemplater
 			? await this.getTemplaterPlugin()
 			: undefined;
 		if (!templaterPlugin) {
-			await this.app.vault.create(metaDataFilePath, formattedContent);
-		} else {
-			const targetFile = await this.app.vault.create(metaDataFilePath, '');
-
-			try {
-				// @ts-expect-error
-				const content = await templaterPlugin.templater.parse_template(
-					{ target_file: targetFile, run_mode: 4 },
-					formattedContent
-				);
-				await this.app.vault.modify(targetFile, content);
-			} catch (err) {
-				new Notice(
-					'ERROR in Binary File Manager Mod: failed to connect to Templater. Your Templater version may not be supported'
-				);
-				console.log(err);
-			}
+			return await this.app.vault.create(metaDataFilePath, formattedContent);
 		}
+
+		const targetFile = await this.app.vault.create(metaDataFilePath, '');
+		try {
+			// @ts-expect-error
+			const content = await templaterPlugin.templater.parse_template(
+				{ target_file: targetFile, run_mode: 4 },
+				formattedContent
+			);
+			await this.app.vault.modify(targetFile, content);
+		} catch (err) {
+			new Notice(
+				'ERROR in Binary File Manager Mod: failed to connect to Templater. Your Templater version may not be supported'
+			);
+			console.log(err);
+		}
+		return targetFile;
 	}
 
 	private async fetchTemplateContent(templatePath: string): Promise<string> {
