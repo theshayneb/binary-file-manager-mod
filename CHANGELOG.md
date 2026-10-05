@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.4.0] - 2026-10-05
 
 - Watch folders: watch several folders for new binary files, each with its own extensions, note folder and template, and an on/off toggle.
 - Renamed to Binary File Manager Mod with its own plugin id (`binary-file-manager-mod`), file list and CSS classes, so it can run side by side with the original plugin.

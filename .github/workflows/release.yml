@@ -1,0 +1,53 @@
+name: release
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.3
+          install: true
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      # The tag must match manifest.json, or BRAT would see a different version than the release name.
+      - name: Check tag matches manifest version
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match manifest.json version $version"
+            exit 1
+          fi
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      # Release notes are the CHANGELOG.md section for this version.
+      - name: Extract release notes
+        run: |
+          awk -v v="$GITHUB_REF_NAME" '
+            /^## / { if (found) exit; if (index($0, "[" v "]")) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "no CHANGELOG.md entry for $GITHUB_REF_NAME"
+            exit 1
+          fi
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: |
+            main.js
+            manifest.json
+            styles.css
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          token: ${{ secrets.GITHUB_TOKEN }}
