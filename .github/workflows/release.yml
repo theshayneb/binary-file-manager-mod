@@ -2,6 +2,8 @@ name: release
 on:
   push:
     tags: ["*"]
+  # Run by hand from the Actions tab: releases manifest.json's version and creates its tag.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,25 +23,31 @@ jobs:
           cache: true
       - run: pnpm install --frozen-lockfile
       # The tag must match manifest.json, or BRAT would see a different version than the release name.
-      - name: Check tag matches manifest version
+      - name: Determine version
         run: |
           version=$(node -p "require('./manifest.json').version")
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "tag $GITHUB_REF_NAME does not match manifest.json version $version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "$version" != "$GITHUB_REF_NAME" ]; then
+              echo "tag $GITHUB_REF_NAME does not match manifest.json version $version"
+              exit 1
+            fi
+          elif [ -n "$(git ls-remote --tags origin "refs/tags/$version")" ]; then
+            echo "version $version is already tagged; bump manifest.json first"
             exit 1
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
       # Release notes are the CHANGELOG.md section for this version.
       - name: Extract release notes
         run: |
-          awk -v v="$GITHUB_REF_NAME" '
+          awk -v v="$VERSION" '
             /^## / { if (found) exit; if (index($0, "[" v "]")) { found = 1; next } }
             found { print }
           ' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
-            echo "no CHANGELOG.md entry for $GITHUB_REF_NAME"
+            echo "no CHANGELOG.md entry for $VERSION"
             exit 1
           fi
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -48,6 +56,7 @@ jobs:
             main.js
             manifest.json
             styles.css
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           body_path: release-notes.md
           token: ${{ secrets.GITHUB_TOKEN }}
