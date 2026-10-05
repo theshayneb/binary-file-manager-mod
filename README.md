@@ -8,6 +8,7 @@ In the settings tab, add one entry per folder you want watched. Each entry has:
 
 | Setting | Description |
 | -- | -- |
+| Enabled | Turn a watch folder off without removing it. |
 | Watched folder | New binary files added to this folder (or its subfolders) are detected. Use `/` for the whole vault. |
 | Extensions | Comma-separated, like `epub, pdf`. Leave empty to use the default extension list. |
 | Note folder | The metadata note is created here (the folder is created if needed). |
@@ -19,6 +20,7 @@ For example:
 
 When watched folders overlap, the deepest one whose extensions match wins.
 Binary files outside every watch folder are ignored unless **Handle files outside watch folders** is on; they then use the default new file location and template, as in the original plugin.
+Files inside a watch folder that is turned off are always ignored, so with every watch folder off and that setting off, the plugin creates nothing.
 
 ---
 

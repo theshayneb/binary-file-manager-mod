@@ -199,6 +199,18 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 			const groupEl = containerEl.createDiv({
 				cls: 'binary-file-manager-mod-watch-folder',
 			});
+			groupEl.toggleClass('is-disabled', !watchFolder.enabled);
+
+			new Setting(groupEl)
+				.setName('Enabled')
+				.setDesc('Turn off to stop watching this folder without removing it.')
+				.addToggle((component) => {
+					component.setValue(watchFolder.enabled).onChange(async (value) => {
+						watchFolder.enabled = value;
+						groupEl.toggleClass('is-disabled', !value);
+						await this.plugin.saveSettings();
+					});
+				});
 
 			new Setting(groupEl)
 				.setName('Watched folder')

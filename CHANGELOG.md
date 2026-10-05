@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Watch folders: watch several folders for new binary files, each with its own extensions, note folder and template.
+- Watch folders: watch several folders for new binary files, each with its own extensions, note folder and template, and an on/off toggle.
 - Renamed to Binary File Manager Mod with its own plugin id (`binary-file-manager-mod`), file list and CSS classes, so it can run side by side with the original plugin.
 - Files that are not in a watch folder are ignored unless "Handle files outside watch folders" is on.
 - Note folders are created when missing; template paths work with or without `.md`.

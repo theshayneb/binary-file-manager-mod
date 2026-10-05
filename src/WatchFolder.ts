@@ -2,6 +2,8 @@ import { matchExtension } from 'Extension';
 import { normalizePath, type TFile } from 'obsidian';
 
 export interface WatchFolder {
+	// Disabled watch folders are skipped as if they did not exist.
+	enabled: boolean;
 	// Folder to watch for new binary files (subfolders included).
 	inputFolder: string;
 	// Extensions to watch in this folder. Empty means "use the default extension list".
@@ -20,6 +22,7 @@ export interface MetaDataTarget {
 
 export function newWatchFolder(): WatchFolder {
 	return {
+		enabled: true,
 		inputFolder: '',
 		extensions: [],
 		outputFolder: '',
@@ -30,6 +33,7 @@ export function newWatchFolder(): WatchFolder {
 export function sanitizeWatchFolder(raw: unknown): WatchFolder {
 	const value = (raw ?? {}) as Partial<WatchFolder>;
 	return {
+		enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
 		inputFolder: typeof value.inputFolder === 'string' ? value.inputFolder : '',
 		extensions: Array.isArray(value.extensions)
 			? value.extensions.filter((ext) => typeof ext === 'string')
@@ -67,7 +71,10 @@ export function resolveWatchFolder(
 	defaultExtensions: string[]
 ): MetaDataTarget | undefined {
 	const candidates = watchFolders
-		.filter((watchFolder) => watchFolder.inputFolder.trim() !== '')
+		.filter(
+			(watchFolder) =>
+				watchFolder.enabled && watchFolder.inputFolder.trim() !== ''
+		)
 		.map((watchFolder) => ({
 			watchFolder,
 			folder: cleanFolder(watchFolder.inputFolder),
@@ -93,4 +100,16 @@ export function resolveWatchFolder(
 		};
 	}
 	return undefined;
+}
+
+// True if the file is inside any watch folder, including disabled ones.
+export function isInWatchFolder(
+	file: TFile,
+	watchFolders: WatchFolder[]
+): boolean {
+	return watchFolders.some(
+		(watchFolder) =>
+			watchFolder.inputFolder.trim() !== '' &&
+			isInFolder(file.path, cleanFolder(watchFolder.inputFolder))
+	);
 }

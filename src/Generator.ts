@@ -1,6 +1,10 @@
 import type { UncoveredApp } from 'Uncover';
 import { retry } from 'Util';
-import { type MetaDataTarget, resolveWatchFolder } from 'WatchFolder';
+import {
+	isInWatchFolder,
+	type MetaDataTarget,
+	resolveWatchFolder,
+} from 'WatchFolder';
 import type BinaryFileManagerPlugin from 'main';
 import {
 	type App,
@@ -43,7 +47,11 @@ export class MetaDataGenerator {
 		if (target) {
 			return target;
 		}
-		if (!settings.handleFilesOutsideWatchFolders) {
+		// Files in a disabled watch folder are left alone, not handled as outside files.
+		if (
+			!settings.handleFilesOutsideWatchFolders ||
+			isInWatchFolder(file, settings.watchFolders)
+		) {
 			return undefined;
 		}
 		const extension = this.plugin.fileExtensionManager.getExtensionMatchedBest(

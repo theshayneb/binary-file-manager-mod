@@ -8,3 +8,7 @@
 	padding: 0 var(--size-4-3);
 	margin-bottom: var(--size-4-3);
 }
+
+.binary-file-manager-mod-watch-folder.is-disabled .setting-item:not(:first-child) {
+	opacity: 0.5;
+}
