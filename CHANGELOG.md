@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.1] - 2026-10-11
+
+- Renamed the plugin to File-to-Note Creator. The plugin id stays `binary-file-manager-mod`, so settings and existing installs carry over.
+
 ## [0.5.0] - 2026-10-05
 
 - Removed the "Defaults" settings: the settings tab now only has watch folders. The file name format and "Use Templater" moved into each watch folder (existing watch folders keep the values they had).

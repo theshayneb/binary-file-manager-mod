@@ -151,7 +151,7 @@ export class MetaDataGenerator {
 			await this.app.vault.modify(targetFile, content);
 		} catch (err) {
 			new Notice(
-				'ERROR in Binary File Manager Mod: failed to connect to Templater. Your Templater version may not be supported'
+				'ERROR in File-to-Note Creator: failed to connect to Templater. Your Templater version may not be supported'
 			);
 			console.log(err);
 		}

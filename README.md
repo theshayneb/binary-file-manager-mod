@@ -1,7 +1,7 @@
-## Binary File Manager Mod
+## File-to-Note Creator
 
 A fork of [Binary File Manager](https://github.com/qawatake/obsidian-binary-file-manager-plugin) that adds **watch folders**.
-It uses its own plugin id (`binary-file-manager-mod`), settings and file list, so it can be installed side by side with the original plugin.
+(Previously called Binary File Manager Mod.) It uses its own plugin id (`binary-file-manager-mod`), settings and file list, so it can be installed side by side with the original plugin.
 
 ### Watch folders
 In the settings tab, add one entry per folder you want watched. There are no other settings. Each entry has:
