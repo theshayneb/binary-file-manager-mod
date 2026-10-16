@@ -1,9 +1,11 @@
 import { FileListAdapter } from 'FileList';
+import { type ForgetPeriod, ForgetPeriodModal, forgetSinceTime } from 'Forget';
 import { Formatter } from 'Formatter';
 import { MetaDataGenerator } from 'Generator';
 import { BinaryFileManagerSettingTab } from 'Setting';
 import {
 	DEFAULT_FILENAME_FORMAT,
+	isInWatchedFolder,
 	sanitizeWatchFolder,
 	type WatchFolder,
 } from 'WatchFolder';
@@ -40,7 +42,7 @@ export default class BinaryFileManagerPlugin extends Plugin {
 						return;
 					}
 					new Notice(`Metadata file of ${file.name} is created.`);
-					this.fileListAdapter.add(file.path);
+					this.fileListAdapter.add(file.path, created.note.path);
 					await this.fileListAdapter.save();
 					// only here, not in the commands, which may create many notes at once
 					if (created.target.openNote) {
@@ -52,54 +54,48 @@ export default class BinaryFileManagerPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.vault.on('delete', async (file: TAbstractFile) => {
-				if (!this.fileListAdapter.has(file.path)) {
-					return;
+				// also forgets a file whose note was deleted, so it can be processed again
+				if (this.fileListAdapter.handleDelete(file.path)) {
+					await this.fileListAdapter.save();
 				}
-				this.fileListAdapter.delete(file.path);
-				await this.fileListAdapter.save();
 			})
+		);
+
+		this.registerEvent(
+			this.app.vault.on(
+				'rename',
+				async (file: TAbstractFile, oldPath: string) => {
+					if (this.fileListAdapter.handleRename(oldPath, file.path)) {
+						await this.fileListAdapter.save();
+					}
+				}
+			)
 		);
 
 		// Commands
 		this.addCommand({
 			id: 'binary-file-manager-manual-detection',
-			name: 'Create metadata for binary files',
+			name: 'Create missing notes for files in watch folders',
 			callback: async () => {
-				const promises: Promise<void>[] = [];
-				const allFiles = this.app.vault.getFiles();
-				for (const file of allFiles) {
-					if (!(await this.metaDataGenerator.shouldCreateMetaDataFile(file))) {
-						continue;
-					}
-
-					promises.push(
-						this.metaDataGenerator.create(file as TFile).then(() => {
-							new Notice(`Metadata file of ${file.name} is created.`);
-							this.fileListAdapter.add(file.path);
-						})
-					);
-				}
-				await Promise.all(promises);
-				this.fileListAdapter.save();
+				await this.createMissingNotes(this.app.vault.getFiles());
 			},
 		});
 
 		this.addCommand({
 			id: 'binary-file-manager-detect-unlinked-binary-files',
-			name: 'Create metadata for unlinked binary files',
+			name: 'Create notes for unlinked files in watch folders',
 			callback: async () => {
-				const promises: Promise<void>[] = [];
-				const unlinkedFiles = this.metaDataGenerator.findUnlinkedBinaries();
-				unlinkedFiles.forEach((file) => {
-					promises.push(
-						this.metaDataGenerator.create(file as TFile).then(() => {
-							new Notice(`Metadata file of ${file.name} is created.`);
-							this.fileListAdapter.add(file.path);
-						})
-					);
-				});
-				await Promise.all(promises);
-				this.fileListAdapter.save();
+				await this.createNotes(this.metaDataGenerator.findUnlinkedBinaries());
+			},
+		});
+
+		this.addCommand({
+			id: 'forget-processed-files',
+			name: 'Forget processed files (all watch folders)',
+			callback: () => {
+				new ForgetPeriodModal(this.app, async (period) => {
+					await this.forgetProcessedFiles(period);
+				}).open();
 			},
 		});
 
@@ -108,6 +104,55 @@ export default class BinaryFileManagerPlugin extends Plugin {
 	}
 
 	// onunload() {}
+
+	// Creates notes for the given files that are in an enabled watch folder and
+	// do not have a note yet. Returns how many notes were created.
+	async createMissingNotes(files: TFile[]): Promise<number> {
+		const filesToProcess: TFile[] = [];
+		for (const file of files) {
+			if (await this.metaDataGenerator.shouldCreateMetaDataFile(file)) {
+				filesToProcess.push(file);
+			}
+		}
+		return await this.createNotes(filesToProcess);
+	}
+
+	private async createNotes(files: TFile[]): Promise<number> {
+		let count = 0;
+		await Promise.all(
+			files.map(async (file) => {
+				const created = await this.metaDataGenerator.create(file);
+				if (!created) {
+					return;
+				}
+				new Notice(`Metadata file of ${file.name} is created.`);
+				this.fileListAdapter.add(file.path, created.note.path);
+				count++;
+			})
+		);
+		await this.fileListAdapter.save();
+		if (count === 0) {
+			new Notice('No new notes to create.');
+		}
+		return count;
+	}
+
+	// Forgets the files processed in the given period, in one watch folder or in all
+	// of them, so their notes can be created again.
+	async forgetProcessedFiles(
+		period: ForgetPeriod,
+		watchFolder?: WatchFolder
+	): Promise<number> {
+		const count = this.fileListAdapter.forgetSince(
+			forgetSinceTime(period),
+			watchFolder ? (path) => isInWatchedFolder(path, watchFolder) : undefined
+		);
+		await this.fileListAdapter.save();
+		new Notice(
+			`Forgot ${count} processed ${count === 1 ? 'file' : 'files'}. Run "Create missing notes" to create their notes again.`
+		);
+		return count;
+	}
 
 	async loadSettings() {
 		const data = (await this.loadData()) ?? {};

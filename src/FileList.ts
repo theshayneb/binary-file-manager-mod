@@ -1,89 +1,155 @@
 import type BinaryFileManagerPlugin from 'main';
 import { type App, normalizePath } from 'obsidian';
 
-const REGISTERED_BINARY_FILE_STORAGE_FILE_NAME =
-	'.binary-file-manager_binary-file-list.txt';
+// Before 0.6.0 the list was a plain text file of paths, without times or notes.
+const LEGACY_STORAGE_FILE_NAME = '.binary-file-manager_binary-file-list.txt';
+const STORAGE_FILE_NAME = 'processed-files.json';
 
+interface ProcessedFile {
+	// When the note was created (milliseconds); 0 if unknown (from the old list).
+	createdAt: number;
+	// Path of the note created for the file, if known.
+	notePath?: string;
+}
+
+// Remembers the files that already have a note, so they are not processed twice.
 export class FileListAdapter {
 	private app: App;
 	private plugin: BinaryFileManagerPlugin;
-	private registeredBinaryFilePaths: Set<string>;
+	private processedFiles = new Map<string, ProcessedFile>();
 
 	constructor(app: App, plugin: BinaryFileManagerPlugin) {
 		this.app = app;
 		this.plugin = plugin;
-		this.registeredBinaryFilePaths = new Set<string>();
 		this.app.workspace.onLayoutReady(async () => {
-			this.deleteNonExistingBinaryFiles();
+			await this.deleteNonExistingFiles();
 		});
 	}
 
 	async load(): Promise<FileListAdapter> {
-		await this.loadBinaryFiles();
+		const adapter = this.app.vault.adapter;
+		const storagePath = this.storageFilePath(STORAGE_FILE_NAME);
+		this.processedFiles = new Map();
+
+		if (await adapter.exists(storagePath)) {
+			try {
+				const data = JSON.parse(await adapter.read(storagePath));
+				for (const [path, value] of Object.entries(data ?? {})) {
+					const entry = value as Partial<ProcessedFile>;
+					this.processedFiles.set(path, {
+						createdAt:
+							typeof entry.createdAt === 'number' ? entry.createdAt : 0,
+						...(typeof entry.notePath === 'string'
+							? { notePath: entry.notePath }
+							: {}),
+					});
+				}
+			} catch (err) {
+				console.log('File-to-Note Creator: could not read the file list', err);
+			}
+			return this;
+		}
+
+		const legacyPath = this.storageFilePath(LEGACY_STORAGE_FILE_NAME);
+		if (await adapter.exists(legacyPath)) {
+			const paths = (await adapter.read(legacyPath))
+				.split(/\r?\n/)
+				.filter((path) => path.trim() !== '');
+			for (const path of paths) {
+				this.processedFiles.set(path, { createdAt: 0 });
+			}
+			await this.save();
+			await adapter.remove(legacyPath);
+		}
 		return this;
 	}
 
 	async save() {
-		await this.saveBinaryFiles();
+		await this.app.vault.adapter.write(
+			this.storageFilePath(STORAGE_FILE_NAME),
+			JSON.stringify(Object.fromEntries(this.processedFiles), null, '\t')
+		);
 	}
 
-	add(filepath: string): void {
-		this.registeredBinaryFilePaths.add(filepath);
+	add(filepath: string, notePath?: string): void {
+		this.processedFiles.set(filepath, {
+			createdAt: Date.now(),
+			...(notePath !== undefined ? { notePath } : {}),
+		});
 	}
 
 	delete(filepath: string): void {
-		this.registeredBinaryFilePaths.delete(filepath);
+		this.processedFiles.delete(filepath);
 	}
 
 	has(filepath: string): boolean {
-		return this.registeredBinaryFilePaths.has(filepath);
+		return this.processedFiles.has(filepath);
 	}
 
-	deleteAll(): void {
-		this.registeredBinaryFilePaths = new Set<string>();
-	}
-
-	private async loadBinaryFiles() {
-		const storageFilePath = this.storageFilePath();
-
-		if (!(await this.app.vault.adapter.exists(storageFilePath))) {
-			this.registeredBinaryFilePaths = new Set<string>();
-			return;
+	// Called for any deleted file. Forgets it if it is a remembered file, or the
+	// file whose note it is (so deleting a note lets its file be processed again).
+	// Returns true if anything was forgotten.
+	handleDelete(path: string): boolean {
+		let changed = this.processedFiles.delete(path);
+		for (const [filePath, entry] of this.processedFiles) {
+			if (entry.notePath === path) {
+				this.processedFiles.delete(filePath);
+				changed = true;
+			}
 		}
-
-		const binaryFiles = (await this.app.vault.adapter.read(storageFilePath))
-			.trim()
-			.split(/\r?\n/);
-		this.registeredBinaryFilePaths = new Set<string>(binaryFiles);
+		return changed;
 	}
 
-	private async saveBinaryFiles() {
-		const storageFilePath = this.storageFilePath();
+	// Keeps paths up to date when a remembered file or one of the notes moves.
+	// Returns true if anything changed.
+	handleRename(oldPath: string, newPath: string): boolean {
+		let changed = false;
+		const entry = this.processedFiles.get(oldPath);
+		if (entry) {
+			this.processedFiles.delete(oldPath);
+			this.processedFiles.set(newPath, entry);
+			changed = true;
+		}
+		for (const value of this.processedFiles.values()) {
+			if (value.notePath === oldPath) {
+				value.notePath = newPath;
+				changed = true;
+			}
+		}
+		return changed;
+	}
 
-		await this.app.vault.adapter.write(
-			storageFilePath,
-			Array.from(this.registeredBinaryFilePaths).join('\n')
-		);
+	// Forgets files whose note was created at or after `since` (milliseconds; 0 means
+	// any time), optionally only those matching `filter`. Returns how many were forgotten.
+	forgetSince(since: number, filter?: (path: string) => boolean): number {
+		let count = 0;
+		for (const [path, entry] of this.processedFiles) {
+			if (entry.createdAt >= since && (!filter || filter(path))) {
+				this.processedFiles.delete(path);
+				count++;
+			}
+		}
+		return count;
 	}
 
 	// Stored in this plugin's own folder, so it is never shared with the original plugin.
-	private storageFilePath(): string {
+	private storageFilePath(fileName: string): string {
 		const pluginDir =
 			this.plugin.manifest.dir ??
 			`${this.app.vault.configDir}/plugins/${this.plugin.manifest.id}`;
-		return normalizePath(
-			`${pluginDir}/${REGISTERED_BINARY_FILE_STORAGE_FILE_NAME}`
-		);
+		return normalizePath(`${pluginDir}/${fileName}`);
 	}
 
-	private async deleteNonExistingBinaryFiles() {
-		const difference = new Set(this.registeredBinaryFilePaths);
-		for (const file of this.app.vault.getFiles()) {
-			difference.delete(file.path);
+	private async deleteNonExistingFiles() {
+		let changed = false;
+		for (const path of Array.from(this.processedFiles.keys())) {
+			if (!this.app.vault.getAbstractFileByPath(path)) {
+				this.processedFiles.delete(path);
+				changed = true;
+			}
 		}
-		for (const fileToBeUnregistered of difference) {
-			this.registeredBinaryFilePaths.delete(fileToBeUnregistered);
+		if (changed) {
+			await this.save();
 		}
-		await this.saveBinaryFiles();
 	}
 }

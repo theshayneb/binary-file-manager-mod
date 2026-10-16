@@ -16,6 +16,8 @@ In the settings tab, add one entry per folder you want watched. There are no oth
 | Template | Template for the metadata note. Leave empty to use the built-in template. |
 | Use Templater | Run the template through the Templater plugin. |
 | Open note after creating it | Open the new metadata note in a new tab. This applies to newly added files only, not to the commands, which may create many notes at once. |
+| Forget processed files | Forget which files in this folder already got a note, for the last hour, 24 hours, 7 days, 30 days or everything, so their notes can be created again. |
+| Create missing notes | Create notes for the files in this folder that do not have one yet. |
 
 For example:
 - `Media/Books/Attachments`, extensions `epub`, note folder `Media/Books`, template `Templates/NewBook.md`
@@ -23,6 +25,11 @@ For example:
 
 When watched folders overlap, the deepest enabled one whose extensions match wins.
 Files outside every enabled watch folder are ignored, so with every watch folder off the plugin creates nothing.
+
+### Re-creating notes
+The plugin remembers which files already got a note, so it never makes two notes for the same file.
+Deleting a note makes it forget that file. To create notes again for forgotten files, use **Create missing notes** in the watch folder's settings, or the command **Create missing notes for files in watch folders**.
+To forget files whose notes you did not delete, use **Forget processed files** in a watch folder's settings, or the command **Forget processed files (all watch folders)**.
 
 ---
 

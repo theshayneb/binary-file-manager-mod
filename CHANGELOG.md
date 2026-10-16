@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0] - 2026-10-16
+
+- Deleting a note now makes the plugin forget its file, so the note can be created again.
+- New per-folder "Forget processed files" (last hour, 24 hours, 7 days, 30 days or everything) and "Create missing notes" buttons.
+- New command "Forget processed files (all watch folders)". The other commands are renamed to "Create missing notes for files in watch folders" and "Create notes for unlinked files in watch folders".
+- The plugin now remembers when each note was created and which note belongs to which file, and follows renamed files and notes. Files remembered by older versions have no date, so only "Everything" forgets them.
+
 ## [0.5.1] - 2026-10-11
 
 - Renamed the plugin to File-to-Note Creator. The plugin id stays `binary-file-manager-mod`, so settings and existing installs carry over.

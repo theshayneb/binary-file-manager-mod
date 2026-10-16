@@ -1,6 +1,8 @@
+import { FORGET_PERIODS, type ForgetPeriod } from 'Forget';
 import { validFileName } from 'Util';
 import {
 	DEFAULT_FILENAME_FORMAT,
+	isInWatchedFolder,
 	newWatchFolder,
 	parseExtensions,
 	type WatchFolder,
@@ -168,6 +170,43 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 				component.setValue(watchFolder.openNote).onChange(async (value) => {
 					watchFolder.openNote = value;
 					await this.plugin.saveSettings();
+				});
+			});
+
+		let forgetPeriod: ForgetPeriod = FORGET_PERIODS[1] as ForgetPeriod;
+		new Setting(groupEl)
+			.setName('Forget processed files')
+			.setDesc(
+				'Forgets which files in this folder already got a note, so their notes can be created again. Deleting a note also forgets its file.'
+			)
+			.addDropdown((component) => {
+				for (const period of FORGET_PERIODS) {
+					component.addOption(period.id, period.label);
+				}
+				component.setValue(forgetPeriod.id).onChange((value) => {
+					forgetPeriod =
+						FORGET_PERIODS.find((period) => period.id === value) ??
+						forgetPeriod;
+				});
+			})
+			.addButton((component) => {
+				component.setButtonText('Forget').onClick(async () => {
+					await this.plugin.forgetProcessedFiles(forgetPeriod, watchFolder);
+				});
+			});
+
+		new Setting(groupEl)
+			.setName('Create missing notes')
+			.setDesc(
+				'Creates notes for the files in this folder that do not have one yet.'
+			)
+			.addButton((component) => {
+				component.setButtonText('Create').onClick(async () => {
+					await this.plugin.createMissingNotes(
+						this.app.vault
+							.getFiles()
+							.filter((file) => isInWatchedFolder(file.path, watchFolder))
+					);
 				});
 			});
 

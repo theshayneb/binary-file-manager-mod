@@ -136,3 +136,14 @@ export function resolveWatchFolder(
 	}
 	return undefined;
 }
+
+// True if the path is inside the watch folder's watched folder (enabled or not).
+export function isInWatchedFolder(
+	filePath: string,
+	watchFolder: WatchFolder
+): boolean {
+	return (
+		watchFolder.inputFolder.trim() !== '' &&
+		isInFolder(filePath, cleanFolder(watchFolder.inputFolder))
+	);
+}
