@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] - 2026-10-26
+
+- Files added to a watch folder while Obsidian was closed (or suspended on mobile) now get their notes when Obsidian next starts. Only files added after this version is first loaded are caught up.
+- A file that is skipped because it already got a note earlier now shows a message saying so, instead of being skipped silently.
+- If creating a note fails, a message shows the reason.
+
 ## [0.6.0] - 2026-10-16
 
 - Deleting a note now makes the plugin forget its file, so the note can be created again.

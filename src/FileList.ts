@@ -17,6 +17,9 @@ export class FileListAdapter {
 	private app: App;
 	private plugin: BinaryFileManagerPlugin;
 	private processedFiles = new Map<string, ProcessedFile>();
+	// Last time the plugin was known to be running (milliseconds), so files added
+	// while Obsidian was closed can be picked up on the next start.
+	lastActive: number | undefined;
 
 	constructor(app: App, plugin: BinaryFileManagerPlugin) {
 		this.app = app;
@@ -33,8 +36,14 @@ export class FileListAdapter {
 
 		if (await adapter.exists(storagePath)) {
 			try {
-				const data = JSON.parse(await adapter.read(storagePath));
-				for (const [path, value] of Object.entries(data ?? {})) {
+				const data = JSON.parse(await adapter.read(storagePath)) ?? {};
+				// 0.6.0 stored only the file map; later versions wrap it with lastActive
+				const isWrapped = typeof data.files === 'object' && data.files !== null;
+				const files = isWrapped ? data.files : data;
+				if (isWrapped && typeof data.lastActive === 'number') {
+					this.lastActive = data.lastActive;
+				}
+				for (const [path, value] of Object.entries(files)) {
 					const entry = value as Partial<ProcessedFile>;
 					this.processedFiles.set(path, {
 						createdAt:
@@ -67,7 +76,14 @@ export class FileListAdapter {
 	async save() {
 		await this.app.vault.adapter.write(
 			this.storageFilePath(STORAGE_FILE_NAME),
-			JSON.stringify(Object.fromEntries(this.processedFiles), null, '\t')
+			JSON.stringify(
+				{
+					lastActive: this.lastActive,
+					files: Object.fromEntries(this.processedFiles),
+				},
+				null,
+				'\t'
+			)
 		);
 	}
 

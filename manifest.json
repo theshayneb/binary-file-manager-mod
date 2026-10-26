@@ -1,7 +1,7 @@
 {
 	"id": "binary-file-manager-mod",
 	"name": "File-to-Note Creator",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"minAppVersion": "1.4.10",
 	"description": "Watches folders for new files and creates a note for each one from a per-folder template.",
 	"author": "qawatake",

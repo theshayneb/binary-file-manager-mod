@@ -26,6 +26,8 @@ For example:
 When watched folders overlap, the deepest enabled one whose extensions match wins.
 Files outside every enabled watch folder are ignored, so with every watch folder off the plugin creates nothing.
 
+Files added while Obsidian is closed get their notes the next time it starts.
+
 ### Re-creating notes
 The plugin remembers which files already got a note, so it never makes two notes for the same file.
 Deleting a note makes it forget that file. To create notes again for forgotten files, use **Create missing notes** in the watch folder's settings, or the command **Create missing notes for files in watch folders**.

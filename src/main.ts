@@ -9,7 +9,10 @@ import {
 	sanitizeWatchFolder,
 	type WatchFolder,
 } from 'WatchFolder';
-import { Notice, Plugin, type TAbstractFile, type TFile } from 'obsidian';
+import { Notice, Plugin, type TAbstractFile, TFile } from 'obsidian';
+
+// How often the plugin records that it is running (see catchUpOnMissedFiles).
+const ACTIVE_INTERVAL = 5 * 60 * 1000;
 
 export interface BinaryFileManagerSettings {
 	watchFolders: WatchFolder[];
@@ -30,25 +33,19 @@ export default class BinaryFileManagerPlugin extends Plugin {
 
 		// Registered once the layout is ready: before that, Obsidian fires 'create'
 		// for every existing file while it loads the vault.
-		this.app.workspace.onLayoutReady(() => {
+		this.app.workspace.onLayoutReady(async () => {
 			this.registerEvent(
 				this.app.vault.on('create', async (file: TAbstractFile) => {
-					if (!(await this.metaDataGenerator.shouldCreateMetaDataFile(file))) {
-						return;
-					}
-
-					const created = await this.metaDataGenerator.create(file as TFile);
-					if (!created) {
-						return;
-					}
-					new Notice(`Metadata file of ${file.name} is created.`);
-					this.fileListAdapter.add(file.path, created.note.path);
-					await this.fileListAdapter.save();
-					// only here, not in the commands, which may create many notes at once
-					if (created.target.openNote) {
-						await this.app.workspace.getLeaf('tab').openFile(created.note);
+					if (file instanceof TFile) {
+						await this.processNewFile(file);
 					}
 				})
+			);
+
+			await this.catchUpOnMissedFiles();
+			// remember that the plugin is running, for the next catch-up
+			this.registerInterval(
+				window.setInterval(() => this.markActive(), ACTIVE_INTERVAL)
 			);
 		});
 
@@ -103,7 +100,73 @@ export default class BinaryFileManagerPlugin extends Plugin {
 		this.addSettingTab(new BinaryFileManagerSettingTab(this.app, this));
 	}
 
-	// onunload() {}
+	override onunload() {
+		this.markActive();
+	}
+
+	private markActive(): void {
+		this.fileListAdapter.lastActive = Date.now();
+		this.fileListAdapter.save().catch((err) => console.error(err));
+	}
+
+	// Handles a file that just appeared in the vault.
+	private async processNewFile(file: TFile): Promise<void> {
+		if (!this.metaDataGenerator.resolveTarget(file)) {
+			return;
+		}
+		if (this.fileListAdapter.has(file.path)) {
+			new Notice(
+				`${file.name} already got a note earlier, so it was skipped. To create its note again, use "Forget processed files" in the watch folder's settings.`
+			);
+			return;
+		}
+		const created = await this.createNote(file);
+		await this.fileListAdapter.save();
+		// only here, not in the commands, which may create many notes at once
+		if (created?.target.openNote) {
+			await this.app.workspace.getLeaf('tab').openFile(created.note);
+		}
+	}
+
+	// Creates notes for files added to enabled watch folders since the plugin last
+	// ran (for example while Obsidian was closed), which it never got events for.
+	private async catchUpOnMissedFiles(): Promise<void> {
+		const lastActive = this.fileListAdapter.lastActive;
+		if (lastActive !== undefined) {
+			const missedFiles = this.app.vault
+				.getFiles()
+				.filter(
+					(file) =>
+						Math.max(file.stat.ctime, file.stat.mtime) > lastActive &&
+						!this.fileListAdapter.has(file.path) &&
+						this.metaDataGenerator.resolveTarget(file) !== undefined
+				);
+			for (const file of missedFiles) {
+				await this.createNote(file);
+			}
+		}
+		this.markActive();
+	}
+
+	// Creates the note for one file and remembers it. Shows a notice either way.
+	private async createNote(
+		file: TFile
+	): ReturnType<MetaDataGenerator['create']> {
+		try {
+			const created = await this.metaDataGenerator.create(file);
+			if (created) {
+				new Notice(`Created ${created.note.basename} for ${file.name}.`);
+				this.fileListAdapter.add(file.path, created.note.path);
+			}
+			return created;
+		} catch (err) {
+			console.error(`File-to-Note Creator: failed for ${file.path}`, err);
+			new Notice(
+				`File-to-Note Creator could not create a note for ${file.name}: ${err instanceof Error ? err.message : String(err)}`
+			);
+			return undefined;
+		}
+	}
 
 	// Creates notes for the given files that are in an enabled watch folder and
 	// do not have a note yet. Returns how many notes were created.
@@ -121,13 +184,9 @@ export default class BinaryFileManagerPlugin extends Plugin {
 		let count = 0;
 		await Promise.all(
 			files.map(async (file) => {
-				const created = await this.metaDataGenerator.create(file);
-				if (!created) {
-					return;
+				if (await this.createNote(file)) {
+					count++;
 				}
-				new Notice(`Metadata file of ${file.name} is created.`);
-				this.fileListAdapter.add(file.path, created.note.path);
-				count++;
 			})
 		);
 		await this.fileListAdapter.save();
