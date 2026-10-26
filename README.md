@@ -16,6 +16,7 @@ In the settings tab, add one entry per folder you want watched. There are no oth
 | Template | Template for the metadata note. Leave empty to use the built-in template. |
 | Use Templater | Run the template through the Templater plugin. |
 | Open note after creating it | Open the new metadata note in a new tab. This applies to newly added files only, not to the commands, which may create many notes at once. |
+| Check for new files every minute | For vaults on a network drive or NAS, where Obsidian may not notice files added from outside it (for example with Windows File Explorer). Looks in this folder on disk every minute and adds new files to Obsidian, which then creates their notes. Desktop only. |
 | Forget processed files | Forget which files in this folder already got a note, for the last hour, 24 hours, 7 days, 30 days or everything, so their notes can be created again. |
 | Create missing notes | Create notes for the files in this folder that do not have one yet. |
 

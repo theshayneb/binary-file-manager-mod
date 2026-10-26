@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.7.0] - 2026-10-26
+
+- New per-folder toggle "Check for new files every minute", for vaults on a network drive or NAS. Obsidian often does not notice files added to such vaults from outside it, so no note was created. With the toggle on, the plugin looks in the watched folder on disk every minute and adds new files to Obsidian, which then creates their notes. Desktop only.
+
 ## [0.6.1] - 2026-10-26
 
 - Files added to a watch folder while Obsidian was closed (or suspended on mobile) now get their notes when Obsidian next starts. Only files added after this version is first loaded are caught up.

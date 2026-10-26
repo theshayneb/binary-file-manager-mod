@@ -4,8 +4,10 @@ import { Formatter } from 'Formatter';
 import { MetaDataGenerator } from 'Generator';
 import { BinaryFileManagerSettingTab } from 'Setting';
 import {
+	cleanFolder,
 	DEFAULT_FILENAME_FORMAT,
 	isInWatchedFolder,
+	resolveWatchFolder,
 	sanitizeWatchFolder,
 	type WatchFolder,
 } from 'WatchFolder';
@@ -13,6 +15,21 @@ import { Notice, Plugin, type TAbstractFile, TFile } from 'obsidian';
 
 // How often the plugin records that it is running (see catchUpOnMissedFiles).
 const ACTIVE_INTERVAL = 5 * 60 * 1000;
+// How often watch folders with "Check for new files" are listed on disk.
+const SCAN_INTERVAL = 60 * 1000;
+
+// Undocumented part of Obsidian's desktop file adapter: reconcileFile reads a file
+// from disk, adds it to the vault and fires the usual 'create' event.
+interface ReconcilingAdapter {
+	reconcileFile(realPath: string, normalizedPath: string): Promise<void>;
+	getRealPath?(normalizedPath: string): string;
+}
+
+function canReconcile(adapter: unknown): adapter is ReconcilingAdapter {
+	return (
+		typeof (adapter as Partial<ReconcilingAdapter>).reconcileFile === 'function'
+	);
+}
 
 export interface BinaryFileManagerSettings {
 	watchFolders: WatchFolder[];
@@ -43,6 +60,10 @@ export default class BinaryFileManagerPlugin extends Plugin {
 			);
 
 			await this.catchUpOnMissedFiles();
+			await this.scanForNewFiles();
+			this.registerInterval(
+				window.setInterval(() => this.scanForNewFiles(), SCAN_INTERVAL)
+			);
 			// remember that the plugin is running, for the next catch-up
 			this.registerInterval(
 				window.setInterval(() => this.markActive(), ACTIVE_INTERVAL)
@@ -102,6 +123,73 @@ export default class BinaryFileManagerPlugin extends Plugin {
 
 	override onunload() {
 		this.markActive();
+	}
+
+	private scanning = false;
+
+	// Lists the watch folders that have "Check for new files" on, directly on disk,
+	// and adds files Obsidian has not noticed yet (Obsidian then fires 'create',
+	// which creates their notes). Needed for vaults on network drives.
+	async scanForNewFiles(): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		if (this.scanning || !canReconcile(adapter)) {
+			return;
+		}
+		this.scanning = true;
+		try {
+			const folders = this.settings.watchFolders
+				.filter(
+					(watchFolder) =>
+						watchFolder.enabled &&
+						watchFolder.scanForNewFiles &&
+						watchFolder.inputFolder.trim() !== ''
+				)
+				.map((watchFolder) => cleanFolder(watchFolder.inputFolder));
+			for (const folder of new Set(folders)) {
+				for (const path of await this.listFilesOnDisk(folder)) {
+					if (this.app.vault.getAbstractFileByPath(path)) {
+						continue;
+					}
+					const name = path.split('/').pop() ?? path;
+					const dot = name.lastIndexOf('.');
+					const extension = dot > 0 ? name.slice(dot + 1) : '';
+					if (
+						!resolveWatchFolder(
+							{ path, name, extension },
+							this.settings.watchFolders
+						)
+					) {
+						continue;
+					}
+					await adapter.reconcileFile(
+						adapter.getRealPath?.(path) ?? path,
+						path
+					);
+				}
+			}
+		} catch (err) {
+			console.error('File-to-Note Creator: scanning for new files failed', err);
+		} finally {
+			this.scanning = false;
+		}
+	}
+
+	// All files under the folder ('' is the vault root) as they are on disk,
+	// skipping hidden folders such as .obsidian.
+	private async listFilesOnDisk(folder: string): Promise<string[]> {
+		const adapter = this.app.vault.adapter;
+		if (folder !== '' && !(await adapter.exists(folder))) {
+			return [];
+		}
+		const listed = await adapter.list(folder);
+		const files = [...listed.files];
+		for (const subfolder of listed.folders) {
+			const subfolderName = subfolder.split('/').pop() ?? '';
+			if (!subfolderName.startsWith('.')) {
+				files.push(...(await this.listFilesOnDisk(subfolder)));
+			}
+		}
+		return files;
 	}
 
 	private markActive(): void {

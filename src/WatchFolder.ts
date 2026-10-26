@@ -19,6 +19,9 @@ export interface WatchFolder {
 	useTemplater: boolean;
 	// Open the metadata note after auto detection creates it.
 	openNote: boolean;
+	// Regularly list this folder on disk and add files Obsidian has not noticed
+	// (for vaults on network drives, which do not report new files).
+	scanForNewFiles: boolean;
 }
 
 export interface MetaDataTarget {
@@ -40,6 +43,7 @@ export function newWatchFolder(): WatchFolder {
 		templatePath: '',
 		useTemplater: false,
 		openNote: false,
+		scanForNewFiles: false,
 	};
 }
 
@@ -64,6 +68,7 @@ export function sanitizeWatchFolder(
 		templatePath: str(value.templatePath, ''),
 		useTemplater: bool(value.useTemplater, fallback.useTemplater),
 		openNote: bool(value.openNote, false),
+		scanForNewFiles: bool(value.scanForNewFiles, false),
 	};
 }
 
@@ -76,7 +81,7 @@ export function parseExtensions(input: string): string[] {
 }
 
 // Returns the folder path without leading/trailing slashes; '' means the vault root.
-function cleanFolder(folder: string): string {
+export function cleanFolder(folder: string): string {
 	const normalized = normalizePath(folder.trim());
 	return normalized === '/' ? '' : normalized.replace(/^\/+|\/+$/g, '');
 }
@@ -85,8 +90,11 @@ function isInFolder(filePath: string, folder: string): boolean {
 	return folder === '' || filePath.startsWith(`${folder}/`);
 }
 
+// The parts of a file needed to decide whether a watch folder handles it.
+export type FileInfo = Pick<TFile, 'path' | 'name' | 'extension'>;
+
 function matchWatchedExtension(
-	file: TFile,
+	file: FileInfo,
 	extensions: string[]
 ): string | undefined {
 	if (extensions.length > 0) {
@@ -102,7 +110,7 @@ function matchWatchedExtension(
 // Finds the watch folder that handles the given file. When watch folders overlap,
 // the most specific (deepest) one whose extensions match wins.
 export function resolveWatchFolder(
-	file: TFile,
+	file: FileInfo,
 	watchFolders: WatchFolder[]
 ): MetaDataTarget | undefined {
 	const candidates = watchFolders

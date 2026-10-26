@@ -173,6 +173,23 @@ export class BinaryFileManagerSettingTab extends PluginSettingTab {
 				});
 			});
 
+		new Setting(groupEl)
+			.setName('Check for new files every minute')
+			.setDesc(
+				'For vaults on a network drive or NAS, where Obsidian may not notice files added from outside it. Looks in this folder on disk every minute and adds any new files to Obsidian, which then creates their notes. Desktop only.'
+			)
+			.addToggle((component) => {
+				component
+					.setValue(watchFolder.scanForNewFiles)
+					.onChange(async (value) => {
+						watchFolder.scanForNewFiles = value;
+						await this.plugin.saveSettings();
+						if (value) {
+							await this.plugin.scanForNewFiles();
+						}
+					});
+			});
+
 		let forgetPeriod: ForgetPeriod = FORGET_PERIODS[1] as ForgetPeriod;
 		new Setting(groupEl)
 			.setName('Forget processed files')
